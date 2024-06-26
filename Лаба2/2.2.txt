@@ -1,0 +1,79 @@
+// Part 2
+// Группа 306
+// Почечура Артемий
+// Вариант хранения данных: 2
+// Вариант задания: 3
+#load "Two.fsx"
+
+//Task 1
+
+let task1 = 
+
+  let check l = 
+    let k = l |> List.map (fun (_,a) -> (a)) |> List.tryFind ((=) 2)
+    if k = None then
+        "Сессия сдана"
+    else 
+        "Сессия не сдана"
+
+  Two.marks
+    |> List.map (fun (a,_,c) -> (a, c))
+    |> List.groupBy fst
+    |> List.map (fun (a, l) -> (a, check l, l |>List.map (snd>>float) |>List.average))
+
+
+printfn"Task 3.1:\n" 
+task1 |> List.iter (fun (stud, passed, avg_mark) -> printfn"%s - %s - %f" stud passed avg_mark)
+
+//Task 2
+
+let task2 = 
+  let corresp a l = l |> List.filter (fun (b, c) -> b = a) |> List.map (fun (_,c) -> c) |> List.head
+  
+  Two.marks
+    |> List.filter (fun (_,_,c) -> c = 2)
+    |> List.map (fun (a,b,_) -> (corresp b Two.subjs, a))
+    |> List.groupBy fst
+    |> List.map (fun (a, l) -> (a, l |> List.map (fun (a, b) -> (b))))
+
+let print_elem_2 elem = 
+    let subj, list_studs = elem
+    printf"%s: " subj
+    list_studs |> List.iter (fun (stud) -> printf"%s | " stud)
+    printf"\n"
+
+printfn"\n\nTask 3.2:\n"
+task2 |> List.iter (fun elem -> print_elem_2 elem)
+
+//Task 3  
+  
+let task3 =
+
+  let get_group l a =
+    l 
+     |> List.filter (fun (c, l) -> (List.tryFind ((=) a) l) <> None)
+     |> List.map (fun (a,_) -> a)
+     |> List.head
+
+  let filter_max l = 
+    l
+     |> List.filter (fun (b, c) -> c = (l |> List.map (fun (_,c) -> (c)) |> List.max))
+
+  Two.marks
+    |> List.map (fun (a,_,c) -> (a, c))
+    |> List.groupBy fst
+    |> List.map (fun (a, l) -> (a, l |>List.map snd |>List.sum))
+    |> List.map (fun (a, b) -> (a, b, get_group Two.studs a))
+    |> List.groupBy (fun (a, b, c) -> c)
+    |> List.map (fun (a,l) -> (a, l |> List.map (fun (b, c, _) -> (b, c))))
+    |> List.map (fun (a,l) -> (a, filter_max l))
+    |> List.sortBy fst
+
+let print_elem_3 elem = 
+    let group, list_studs = elem
+    printf"%d: " group
+    list_studs |> List.iter (fun (stud, sum_mark) -> printf"%s - %d | " stud sum_mark)
+    printf"\n"
+
+printfn"\n\nTask 3.3:\n"
+task3 |> List.iter (fun elem -> print_elem_3 elem)

@@ -1,0 +1,52 @@
+open System
+// Группа 306
+// Почечура Артемий
+// Вариант 8
+// Solution
+
+let l = [4; 10; 6; 7; 5; 8; 9]
+
+// Method 1: Library Function
+
+let min1 = function
+  | []   -> failwith "Cannot reduce"
+  | [x]  -> failwith "Cannot reduce"
+  | L ->  
+    let (min11, min22) = List.minBy (fun elem -> fst(elem) * snd(elem)) (List.pairwise L)
+    min11*min22
+
+printfn "%d" (min1 l)
+
+// Method 2: Recursion
+
+let rec min2 = function
+  | []   -> failwith "Cannot reduce"
+  | [x]  -> failwith "Cannot reduce"
+  | h::t::[] -> h * t
+  | h::t -> 
+    let g::l = t
+    min (h * g) (min2 t)
+
+printfn "%d" (min2 l)
+
+// Method 3: Tail Rec
+
+let min3 =
+  let rec min3' min = function
+    | []   -> failwith "Cannot reduce"
+    | [x]  -> failwith "Cannot reduce"
+    | h::t::[] -> 
+        if t * h < min then
+            t * h
+        else 
+            min
+    | h::t -> 
+        let g::l = t
+        if g * h < min then
+            min3' (g * h) t
+        else 
+            min3' min t
+
+  min3' Int32.MaxValue
+
+printfn "%d" (min3 l)

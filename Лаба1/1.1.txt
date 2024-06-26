@@ -1,0 +1,56 @@
+// Print a table of a given function f, computed by taylor series
+
+// function to compute
+let f x = (log x) / 2.
+
+let a = 0.2
+let b = 0.7
+let n = 10
+
+let eps = 1e-6
+
+// Define a function to compute f using naive taylor series method
+
+let taylor_naive_numb x n = 
+       (1. / (2. * n + 1.)) * (((x - 1.) / (x + 1.)) ** (2. * n + 1.))
+
+let rec taylor_naive_iter x cur n acc =
+    let next = (taylor_naive_numb x (n + 1.))
+    if (abs (cur - next)) > eps then
+       taylor_naive_iter x next (n + 1.) (acc + cur)
+    else 
+        acc + cur, n
+
+let taylor_naive x = taylor_naive_iter x (taylor_naive_numb x 0.) 0. 0.
+
+// Define a function to do the same in a more efficient way
+
+let taylor_numb x = (x - 1.) / (x + 1.)
+
+// sq - constant factor
+// fc - current (x - 1.) / (x + 1.) pow
+let rec taylor_iter cur n sq fc acc = 
+    let next = (fc * sq) / (2. * (n + 1.) + 1.)
+    if (abs (cur - next)) > eps then
+      taylor_iter next (n + 1.) sq (fc * sq) (acc + cur)
+    else 
+        acc + cur, n
+
+let taylor x = taylor_iter (taylor_numb x) 0. ((taylor_numb x) ** 2.) (taylor_numb x) 0.
+
+
+let main =
+   printfn "┌──────┬─────────────┬────────────┬────────────┬─────────────┬─────────────┐"
+   printfn "│  x   │   Builtin   │Smart Taylor│  # terms   │ Dumb Taylor │   # terms   │"
+   for i=0 to n do
+     let x = a+(float i)/(float n)*(b-a)
+     let p11, p12 = taylor x
+     let p21, p22 = taylor_naive x
+     printfn "│──────┼─────────────┼────────────┼────────────┼─────────────┼─────────────│"
+     printfn "│%5.2f │ %10.6f  │ %10.6f │  %5.0f     │ %10.6f  │  %5.0f      │" x (f x) p11 p12 p21 p22
+
+   printfn "└──────┴─────────────┴────────────┴────────────┴─────────────┴─────────────┘"
+// make sure to improve this table to include the required number of iterations
+// for each of the methods
+
+main

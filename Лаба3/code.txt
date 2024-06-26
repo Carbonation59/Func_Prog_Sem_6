@@ -1,0 +1,225 @@
+open System 
+open System.Numerics 
+open System.IO
+
+// Tokenizer
+
+type Token = 
+    | Open | Close 
+    | Number of string 
+    | String of string 
+    | Symbol of string
+
+let tokenize source = 
+    let rec string acc = function 
+        | '\\' :: '"' :: t -> string (acc + "\"") t  
+        | '"' :: t -> acc, t  
+        | c :: t -> string (acc + (c.ToString())) t  
+        | _ -> failwith "Malformed string." 
+    let rec token acc = function 
+        | (']' :: _) as t -> acc, t  
+        | w :: t when Char.IsWhiteSpace(w) -> acc, t  
+        | [] -> acc, []  
+        | c :: t -> token (acc + (c.ToString())) t  
+    let rec tokenize' acc = function 
+        | w :: t when Char.IsWhiteSpace(w) -> tokenize' acc t
+        | '[' :: t -> tokenize' (Open :: acc) t 
+        | ']' :: t -> tokenize' (Close :: acc) t 
+        | '"' :: t ->
+            let s, t' = string "" t 
+            tokenize' (Token.String(s) :: acc) t' 
+        | '-' :: d :: t when Char.IsDigit(d) ->
+            let n, t' = token ("-" + d.ToString()) t 
+            tokenize' (Token.Number(n) :: acc) t' 
+        | '+' :: d :: t | d :: t when Char.IsDigit(d) ->
+            let n, t' = token (d.ToString()) t 
+            tokenize' (Token.Number(n) :: acc) t' 
+        | s :: t ->
+            let s, t' = token (s.ToString()) t 
+            tokenize' (Token.Symbol(s) :: acc) t' 
+        | [] -> List.rev acc
+    tokenize' [] source
+
+type Expression = 
+    | Number of int
+    | String of string 
+    | Variable of string 
+    | Op_Bin of string 
+    | Op_Cmpr of string 
+    | List of Expression list 
+
+let check_bin = function
+    | "PLUS" -> 1
+    | "MINUS" -> 1
+    | "MULTIPLY" -> 1
+    | "DIVIDE" -> 1
+    | "MORE?" -> 1
+    | "LOW?" -> 1
+    | "EQUAL?" -> 1
+    | "LOWEQ?" -> 1
+    | "MOREEQ?" -> 1
+    | _ -> 0
+
+let check_cmpr = function
+    | "LET" -> 1
+    | "LAMBDA" -> 1
+    | "COND" -> 1
+    | "LETREC" -> 1
+    | "CALL" -> 1
+    | _ -> 0
+
+// Parser
+
+let parse source = 
+    let map = function 
+        | Token.Number(n) -> Expression.Number(n |> int) 
+        | Token.String(s) -> Expression.String(s) 
+        | Token.Symbol(s) -> 
+            let check = function
+                | s when (check_cmpr s) = 1 -> Expression.Op_Cmpr(s)
+                | s when (check_bin s) = 1 -> Expression.Op_Bin(s)
+                | _ -> Expression.Variable(s) 
+            check s
+        | _ -> failwith "Syntax error." 
+    let rec parse' acc = function 
+        | Open :: t -> 
+            let e, t' = parse' [] t 
+            parse' (List(e) :: acc) t' 
+        | Close :: t -> (List.rev acc), t 
+        | h :: t -> parse' ((map h) :: acc) t 
+        | [] -> (List.rev acc), [] 
+    let result, _ = parse' [] (tokenize source) 
+    result
+
+type id = string
+type expr = 
+    | Var of id
+    | String of id
+    | Lam of id*expr
+    | App of expr*expr
+    | Int of int
+    | Cond of expr*expr*expr   
+    | Let of id*expr*expr
+    | LetRec of id*expr*expr   
+    | PFunc of id
+    | Op of id*int*expr list
+    | Closure of expr*env
+    | RClosure of expr*env*id   
+  and
+   env = Map<id, expr>
+
+// Translator
+
+let rec trans = function 
+    | List(Op_Cmpr("LAMBDA") :: List(l) :: t) :: q ->
+        let rec generate_func = function
+            | h :: [] -> 
+                let g = (Op_Cmpr("LAMBDA") :: List(l) :: t)
+                App((trans g), (trans [h]))
+            | h :: z -> App((generate_func z), (trans [h]))
+            | _ -> trans (Op_Cmpr("LAMBDA") :: List(l) :: t)
+        generate_func q
+    | List(list) :: t -> trans list
+    | Op_Bin(s) :: h :: t :: [] -> App(App(PFunc(s), (trans [h])), (trans [t]))
+    | Number(n) :: [] -> Int(n)
+    | Variable(s) :: [] -> Var(s)
+    | Expression.String(s) :: [] -> expr.String(s)
+    | Op_Cmpr("CALL") :: List(Variable(s) :: t) :: [] ->
+        let rec call_pars = function
+            | h :: [] -> 
+                        App((trans [Variable(s)]), (trans [h]))
+            | h :: z -> App((call_pars z), (trans [h]))
+        call_pars t
+    | Op_Cmpr("LET") :: List(h) :: t ->
+        let rec Let_pars third = function
+            | List(Variable(h) :: t) :: [] -> Let(h, (trans t), (trans third))
+            | List(Variable(h) :: t) :: g -> Let(h, (trans t), ((Let_pars third g)))
+        Let_pars t h
+    | Op_Cmpr("LETREC") :: List(h) :: t ->
+        let rec Let_r_pars third = function
+            | List(Variable(h) :: t) :: [] -> LetRec(h, (trans t), (trans third))
+            | List(Variable(h) :: t) :: g -> LetRec(h, (trans t), ((Let_r_pars third g)))
+        Let_r_pars t h
+    | Op_Cmpr("COND") :: List(h) :: t -> 
+         let f = (List(h) :: t)
+         let rec Cond_pars = function
+            | List(q :: t) :: g :: [] -> Cond((trans [q]), (trans t), (trans [g]))
+            | List(q :: t) :: tail ->  Cond((trans [q]), (trans t), (Cond_pars tail))
+         Cond_pars f
+    | Op_Cmpr("LAMBDA") :: List(l) :: t ->
+        let rec Let_Lam second = function
+            | Variable(h) :: [] -> Lam(h, (trans second))
+            | Variable(h) :: g -> Lam(h, (Let_Lam second g))
+        Let_Lam t l
+    | _ -> failwith "Syntax error." 
+
+let input filename = 
+    let reader = new StreamReader(string filename)
+    let rec input_lines acc = function
+        | s when s = null -> acc
+        | s -> input_lines (acc + s) (reader.ReadLine())
+    input_lines "" (reader.ReadLine())
+
+let g = parse (Seq.toList (input "sample.x"))
+
+let g1 = List.map(fun x -> (trans [x])) g
+
+// Interpreter
+
+let arity = function
+  | "sin" -> 1
+  | otherwise -> 2
+
+let funof = function
+  | "PLUS" -> (function 
+                |[Int(a);Int(b)] -> Int(a+b)
+                |[String(a);String(b)] -> String(a+b))
+  | "MINUS" -> (function [Int(a);Int(b)] -> Int(a-b))
+  | "MULTIPLY" -> (function [Int(a);Int(b)] -> Int(a*b))
+  | "DIVIDE" -> (function [Int(a);Int(b)] -> Int(a/b))
+  | "EQUAL?" -> (function 
+                    | [Int(a);Int(b)] -> if a=b then Int(1) else Int(0)  
+                    | [String(a);String(b)] -> if a=b then Int(1) else Int(0))  
+  | "MORE?" -> (function 
+                    | [Int(a);Int(b)] -> if a>b then Int(1) else Int(0)
+                    | [String(a);String(b)] -> if a>b then Int(1) else Int(0))  
+  | "LOW?" -> (function 
+                    | [Int(a);Int(b)] -> if a<b then Int(1) else Int(0)  
+                    | [String(a);String(b)] -> if a<b then Int(1) else Int(0))  
+  | "LOWEQ?" -> (function 
+                    | [Int(a);Int(b)] -> if a<=b then Int(1) else Int(0)  
+                    | [String(a);String(b)] -> if a<=b then Int(1) else Int(0))  
+  | "MOREEQ?" -> (function 
+                    | [Int(a);Int(b)] -> if a>=b then Int(1) else Int(0) 
+                    | [String(a);String(b)] -> if a>=b then Int(1) else Int(0))  
+
+let rec eval exp env =
+    match exp with
+    | App(e1,e2) -> apply (eval e1 env) (eval e2 env)
+    | Int(n) -> Int(n)
+    | String(s) -> String(s)
+    | Var(x) -> Map.find x env
+    | PFunc(f) -> Op(f, arity f,[])
+    | Op(id,n,el) -> Op(id,n,el)
+    | Cond(e0,e1,e2) ->                                            
+        if Int(1)=eval e0 env then eval e1 env else eval e2 env    
+    | Let(id,e1,e2) ->
+        let r = eval e1 env in
+          eval e2 (Map.add id r env)
+    | LetRec(id,e1,e2) ->                                         
+        eval e2 (Map.add id (RClosure(e1,env,id)) env)            
+    | Lam(id,ex) -> Closure(exp,env)
+    | Closure(exp,env) -> exp
+    | _ -> failwith "Syntax error." 
+and apply e1 e2 =
+    match e1 with 
+      | Closure(Lam(v,e),env) -> eval e (Map.add v e2 env)
+      | RClosure(Lam(v,e),env,id) -> eval e (Map.add v e2 (Map.add id e1 env))
+      | Op(id,n,args) ->
+          if n=1 then (funof id)(args@[e2])
+          else Op(id,n-1,args@[e2])
+
+
+let E exp = eval exp Map.empty
+
+List.iter(fun x -> printfn "%A" (E x)) g1
